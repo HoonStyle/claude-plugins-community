@@ -1,7 +1,8 @@
 name: Sync upstream
 
 # Fork maintenance:
-#   1. Merge upstream (anthropics/<this repo name>) main into this fork's main.
+#   1. Merge the upstream (parent) repository's main into this fork's main,
+#      using the same server-side operation as GitHub's "Sync fork" button.
 #   2. Disable every other workflow inherited from upstream so it does not run
 #      in this fork. Add a workflow path to KEEP_WORKFLOWS to exempt it.
 #
@@ -25,7 +26,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  UPSTREAM_OWNER: anthropics
   SYNC_BRANCH: main
   SELF_WORKFLOW: .github/workflows/sync-upstream.yml
   # Space-separated workflow paths that must stay enabled besides this one.
@@ -35,27 +35,14 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.SYNC_BRANCH }}
-          fetch-depth: 0
-
       - name: Merge upstream into fork
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          upstream="https://github.com/${UPSTREAM_OWNER}/${GITHUB_REPOSITORY#*/}.git"
-          git fetch --no-tags "${upstream}" "${SYNC_BRANCH}"
-          if git merge-base --is-ancestor FETCH_HEAD HEAD; then
-            echo "Already up to date with ${upstream} (${SYNC_BRANCH})."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git merge --no-ff \
-            -m "sync: merge upstream ${SYNC_BRANCH} ($(git rev-parse --short FETCH_HEAD))" \
-            FETCH_HEAD
-          git push origin "HEAD:${SYNC_BRANCH}"
-          echo "Merged $(git rev-list --count 'HEAD^1..FETCH_HEAD') upstream commit(s)."
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/merge-upstream" \
+            -f branch="${SYNC_BRANCH}" \
+            --jq '"\(.merge_type): \(.message)"'
 
       - name: Disable workflows inherited from upstream
         env:
